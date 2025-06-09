@@ -10,7 +10,7 @@ counter=0
 offset = 20
 imgSize=300
 
-folder="Data/10"
+folder="Data/Z"
 
 while True:
     success, img = cap.read()

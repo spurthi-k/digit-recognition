@@ -1,38 +1,40 @@
+# Load TFLite model
 import cv2
 from cvzone.HandTrackingModule import HandDetector
 import numpy as np
 import math
-import tensorflow as tf
-# from tensorflow.keras.models import load_model  # Not needed for TFLite
+from transformers import AutoProcessor, AutoModelForImageClassification
+import torch
+from PIL import Image
+
+# Use a pipeline as a high-level helper
+from transformers import pipeline
+
+pipe = pipeline("image-classification", model="prithivMLmods/Alphabet-Sign-Language-Detection")
 
 cap = cv2.VideoCapture(0)
 detector = HandDetector(maxHands=1)
 
-# Load TFLite model
-interpreter = tf.lite.Interpreter(model_path="Model/model_unquant.tflite")
-interpreter.allocate_tensors()
-
 # Load labels
-labels = open("Model/labels.txt").read().splitlines()
+labels = open('Model/labels.txt').read().splitlines()
 
 counter = 0
 offset = 20
 imgSize = 300
-labels = ["1","2","3","4","5","6","7","8","9","10"]
 
 folder = "Data/C"
 
-# ✨ Define getPrediction function
-def getPrediction(imgWhite, interpreter, labels):
-    input_data = np.expand_dims(cv2.resize(imgWhite, (224, 224)).astype(np.float32), axis=0) / 255.0
-    input_index = interpreter.get_input_details()[0]['index']
-    output_index = interpreter.get_output_details()[0]['index']
-    interpreter.set_tensor(input_index, input_data)
-    interpreter.invoke()
-    output = interpreter.get_tensor(output_index)
-    index = int(np.argmax(output))
-    prediction = labels[index]
-    return prediction, index
+def getPrediction(imgWhite, processor, model):
+    # Convert OpenCV image (BGR) to RGB
+    img_rgb = cv2.cvtColor(imgWhite, cv2.COLOR_BGR2RGB)
+    img_pil = Image.fromarray(img_rgb)
+    inputs = processor(images=img_rgb, return_tensors="pt")
+    with torch.no_grad():
+        outputs = model(**inputs)
+    logits = outputs.logits
+    predicted_class_idx = logits.argmax(-1).item()
+    prediction = model.config.id2label[predicted_class_idx]
+    return prediction, predicted_class_idx
 
 while True:
     success, img = cap.read()
@@ -69,8 +71,15 @@ while True:
             imgWhite[hGap:hGap + hCal, :] = imgResize
 
         # ✨ Get prediction and index
-        prediction, index = getPrediction(imgWhite, interpreter, labels)
-        print(prediction, index)
+        # Get prediction using the pipeline
+        img_rgb = cv2.cvtColor(imgWhite, cv2.COLOR_BGR2RGB)
+        img_pil = Image.fromarray(img_rgb)
+
+        # Pass the PIL image to the pipeline
+        outputs = pipe(img_pil)
+        prediction = outputs[0]['label']
+        index = outputs[0]['score']
+        print(prediction)
 
         # Draw output
         cv2.rectangle(imgOutput, (x - offset, y - offset - 50), (x - offset + 90, y - offset), (255, 0, 255), cv2.FILLED)
